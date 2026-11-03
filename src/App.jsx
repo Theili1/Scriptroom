@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Search, Clapperboard, Clock3, Eye, MessageCircle, ArrowUpLeft, X, Film,
   Bookmark, ChevronLeft, LayoutDashboard, FileText, Plus, LogOut, Pencil,
-  Trash2, User, LockKeyhole, Sparkles, CalendarDays, Save, LoaderCircle,
+  Trash2, User, LockKeyhole, Sparkles, Save, LoaderCircle,
 } from 'lucide-react'
 import { scripts as sampleScripts } from './data'
 import { supabase, isSupabaseConfigured } from './supabase'
@@ -138,14 +138,23 @@ function Admin({ onClose, onChanged }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [items, setItems] = useState([])
+  const [adminComments, setAdminComments] = useState([])
+  const [section, setSection] = useState('scripts')
+  const [commentQuery, setCommentQuery] = useState('')
   const [form, setForm] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const empty = { title: '', english: '', author: '', genre: '', minutes: 10, excerpt: '', body: '', color: 'blue' }
   const refresh = async () => {
-    const { data, error: err } = await supabase.from('scripts').select('*').order('created_at', { ascending: false })
-    if (err) setError('دریافت فیلمنامه‌ها ناموفق بود؛ تنظیمات دیتابیس را بررسی کنید.')
-    else setItems(data || [])
+    const [scriptsResult, commentsResult] = await Promise.all([
+      supabase.from('scripts').select('*').order('created_at', { ascending: false }),
+      supabase.from('comments').select('id, script_id, nickname, message, created_at').order('created_at', { ascending: false }).limit(500),
+    ])
+    if (scriptsResult.error || commentsResult.error) setError('دریافت اطلاعات داشبورد ناموفق بود؛ تنظیمات دیتابیس را بررسی کنید.')
+    else {
+      setItems(scriptsResult.data || [])
+      setAdminComments(commentsResult.data || [])
+    }
   }
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); return }
@@ -177,7 +186,19 @@ function Admin({ onClose, onChanged }) {
     if (err) setError('حذف ناموفق بود. دسترسی مدیر را بررسی کنید.')
     else { await refresh(); onChanged() }
   }
+  const removeComment = async comment => {
+    if (!window.confirm(`دیدگاه «${comment.nickname || 'مهمان'}» حذف شود؟`)) return
+    setError('')
+    const { error: err } = await supabase.from('comments').delete().eq('id', comment.id)
+    if (err) setError('حذف دیدگاه انجام نشد. سیاست دسترسی مدیر را در Supabase بررسی کنید.')
+    else setAdminComments(old => old.filter(item => item.id !== comment.id))
+  }
   const editItem = item => setForm({ ...item, body: item.content.map(x => x.text).join('\n\n') })
+  const scriptNames = Object.fromEntries(items.map(item => [item.id, item.title]))
+  const visibleComments = adminComments.filter(comment => {
+    const text = `${comment.nickname} ${comment.message} ${scriptNames[comment.script_id] || ''}`.toLowerCase()
+    return text.includes(commentQuery.trim().toLowerCase())
+  })
 
   return <div className="reader-backdrop admin-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <article className="admin-panel">
@@ -201,12 +222,12 @@ function Admin({ onClose, onChanged }) {
             : <div className="admin-workspace">
               <aside className="admin-sidebar">
                 <div className="admin-user"><span><User /></span><div><strong>مدیر محتوا</strong><small>{session.user.email}</small></div></div>
-                <nav><button className="active" onClick={() => setForm(null)}><LayoutDashboard /> نمای کلی</button><button onClick={() => setForm(empty)}><Plus /> فیلمنامه جدید</button></nav>
+                <nav><button className={section === 'scripts' && !form ? 'active' : ''} onClick={() => { setSection('scripts'); setForm(null); setError('') }}><LayoutDashboard /> فیلمنامه‌ها</button><button className={section === 'comments' ? 'active' : ''} onClick={() => { setSection('comments'); setForm(null); setError('') }}><MessageCircle /> دیدگاه‌ها <b className="nav-count">{adminComments.length.toLocaleString('fa-IR')}</b></button><button onClick={() => { setSection('scripts'); setForm(empty) }}><Plus /> فیلمنامه جدید</button></nav>
                 <button className="admin-logout" onClick={() => supabase.auth.signOut()}><LogOut /> خروج از حساب</button>
               </aside>
               <main className="admin-main">
-                <div className="admin-heading"><div><span>CONTENT STUDIO</span><h2>{form ? (form.id ? 'ویرایش فیلمنامه' : 'فیلمنامه جدید') : 'مدیریت فیلمنامه‌ها'}</h2><p>{form ? 'اطلاعات اثر را کامل کنید و تغییرات را ذخیره کنید.' : 'همه‌ی آثار منتشرشده را از اینجا مدیریت کنید.'}</p></div>{!form && <button className="admin-primary" onClick={() => setForm(empty)}><Plus /> افزودن فیلمنامه</button>}</div>
-                {!form && <div className="admin-stats"><article><span><FileText /></span><div><b>{items.length.toLocaleString('fa-IR')}</b><small>فیلمنامه منتشرشده</small></div></article><article><span><Sparkles /></span><div><b>{new Set(items.map(x => x.genre)).size.toLocaleString('fa-IR')}</b><small>ژانر فعال</small></div></article><article><span><CalendarDays /></span><div><b>{new Date().toLocaleDateString('fa-IR', { month: 'long' })}</b><small>آخرین به‌روزرسانی</small></div></article></div>}
+                <div className="admin-heading"><div><span>CONTENT STUDIO</span><h2>{form ? (form.id ? 'ویرایش فیلمنامه' : 'فیلمنامه جدید') : section === 'comments' ? 'مدیریت دیدگاه‌ها' : 'مدیریت فیلمنامه‌ها'}</h2><p>{form ? 'اطلاعات اثر را کامل کنید و تغییرات را ذخیره کنید.' : section === 'comments' ? 'دیدگاه‌های ثبت‌شده را بررسی و در صورت نیاز حذف کنید.' : 'همه‌ی آثار منتشرشده را از اینجا مدیریت کنید.'}</p></div>{!form && section === 'scripts' && <button className="admin-primary" onClick={() => setForm(empty)}><Plus /> افزودن فیلمنامه</button>}</div>
+                {!form && <div className="admin-stats"><article><span><FileText /></span><div><b>{items.length.toLocaleString('fa-IR')}</b><small>فیلمنامه منتشرشده</small></div></article><article><span><Sparkles /></span><div><b>{new Set(items.map(x => x.genre)).size.toLocaleString('fa-IR')}</b><small>ژانر فعال</small></div></article><article><span><MessageCircle /></span><div><b>{adminComments.length.toLocaleString('fa-IR')}</b><small>دیدگاه خوانندگان</small></div></article></div>}
 
                 {form ? <form className="admin-editor" onSubmit={save}>
                   <div className="editor-section"><div className="editor-section-title"><span>۰۱</span><div><strong>مشخصات اصلی</strong><small>اطلاعاتی که روی کارت اثر دیده می‌شود.</small></div></div><div className="admin-form-grid">{[['title','عنوان فارسی','مثلاً آخرین قطار'],['english','عنوان انگلیسی','THE LAST TRAIN'],['author','نام نویسنده','نام و نام خانوادگی'],['genre','ژانر','مثلاً درام'],['minutes','زمان مطالعه','۱۰']].map(([key,label,placeholder]) => <label key={key} className={key === 'title' || key === 'english' ? 'field-wide' : ''}><span>{label}</span><input required type={key === 'minutes' ? 'number' : 'text'} dir={key === 'english' ? 'ltr' : 'rtl'} min={key === 'minutes' ? 1 : undefined} placeholder={placeholder} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} /></label>)}<label><span>رنگ پوستر</span><select value={form.color || 'blue'} onChange={e => setForm({ ...form, color: e.target.value })}><option value="blue">آبی شب</option><option value="ochre">کهربایی</option><option value="rose">رز دودی</option></select></label><label className="field-full"><span>خلاصه‌ی داستان</span><textarea required rows={3} maxLength={2000} value={form.excerpt} onChange={e => setForm({ ...form, excerpt: e.target.value })} placeholder="در چند جمله کوتاه، فضای داستان را معرفی کنید..." /></label></div></div>
@@ -214,7 +235,11 @@ function Admin({ onClose, onChanged }) {
                   {error && <p className="form-message error">{error}</p>}
                   <div className="editor-actions"><button type="button" className="admin-secondary" onClick={() => { setForm(null); setError('') }}>انصراف</button><button className="admin-primary" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Save />} {busy ? 'در حال ذخیره...' : 'ذخیره و انتشار'}</button></div>
                 </form>
-                  : <section className="admin-content-list"><div className="content-list-head"><span>عنوان اثر</span><span>ژانر و زمان</span><span>تاریخ انتشار</span><span>عملیات</span></div>{items.length === 0 ? <div className="admin-empty"><FileText /><h3>هنوز فیلمنامه‌ای نیست</h3><p>اولین اثر را به کتابخانه اضافه کنید.</p><button className="admin-primary" onClick={() => setForm(empty)}><Plus /> افزودن فیلمنامه</button></div> : items.map((item, index) => <article className="admin-content-row" key={item.id}><div className="content-title"><span className={`mini-poster ${item.color || 'blue'}`}>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.title}</strong><small>{item.english} · {item.author}</small></div></div><div className="content-meta"><span>{item.genre}</span><small>{item.minutes.toLocaleString('fa-IR')} دقیقه</small></div><time>{new Date(item.created_at).toLocaleDateString('fa-IR')}</time><div className="row-actions"><button onClick={() => editItem(item)} aria-label={`ویرایش ${item.title}`}><Pencil /></button><button className="danger" onClick={() => remove(item.id)} aria-label={`حذف ${item.title}`}><Trash2 /></button></div></article>)}</section>}
+                  : section === 'comments' ? <section className="admin-comments-manager">
+                    <div className="comments-toolbar"><label><Search /><input value={commentQuery} onChange={e => setCommentQuery(e.target.value)} placeholder="جست‌وجو در نام، متن یا فیلمنامه..." /></label><span>{visibleComments.length.toLocaleString('fa-IR')} دیدگاه</span></div>
+                    {visibleComments.length === 0 ? <div className="admin-empty"><MessageCircle /><h3>{commentQuery ? 'دیدگاهی پیدا نشد' : 'هنوز دیدگاهی ثبت نشده'}</h3><p>{commentQuery ? 'عبارت دیگری را جست‌وجو کنید.' : 'دیدگاه‌های خوانندگان در این بخش نمایش داده می‌شوند.'}</p></div> : <div className="admin-comments-list">{visibleComments.map(comment => <article className="admin-comment-card" key={comment.id}><div className="comment-avatar">{(comment.nickname || 'م')[0]}</div><div className="admin-comment-body"><div className="admin-comment-head"><div><strong>{comment.nickname || 'مهمان'}</strong><span>برای «{scriptNames[comment.script_id] || 'فیلمنامه حذف‌شده'}»</span></div><time>{new Date(comment.created_at).toLocaleDateString('fa-IR')}</time></div><p>{comment.message}</p></div><button className="delete-comment" onClick={() => removeComment(comment)} aria-label={`حذف دیدگاه ${comment.nickname || 'مهمان'}`}><Trash2 /><span>حذف</span></button></article>)}</div>}
+                  </section>
+                    : <section className="admin-content-list"><div className="content-list-head"><span>عنوان اثر</span><span>ژانر و زمان</span><span>تاریخ انتشار</span><span>عملیات</span></div>{items.length === 0 ? <div className="admin-empty"><FileText /><h3>هنوز فیلمنامه‌ای نیست</h3><p>اولین اثر را به کتابخانه اضافه کنید.</p><button className="admin-primary" onClick={() => setForm(empty)}><Plus /> افزودن فیلمنامه</button></div> : items.map((item, index) => <article className="admin-content-row" key={item.id}><div className="content-title"><span className={`mini-poster ${item.color || 'blue'}`}>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.title}</strong><small>{item.english} · {item.author}</small></div></div><div className="content-meta"><span>{item.genre}</span><small>{item.minutes.toLocaleString('fa-IR')} دقیقه</small></div><time>{new Date(item.created_at).toLocaleDateString('fa-IR')}</time><div className="row-actions"><button onClick={() => editItem(item)} aria-label={`ویرایش ${item.title}`}><Pencil /></button><button className="danger" onClick={() => remove(item.id)} aria-label={`حذف ${item.title}`}><Trash2 /></button></div></article>)}</section>}
               </main>
             </div>}
     </article>

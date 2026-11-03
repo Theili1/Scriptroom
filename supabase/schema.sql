@@ -39,9 +39,15 @@ create policy "Anyone can post comments" on public.comments for insert to anon, 
   exists (select 1 from public.scripts where id = script_id)
   and char_length(trim(nickname)) between 1 and 40 and char_length(trim(message)) between 2 and 2000
 );
+drop policy if exists "Admins can delete comments" on public.comments;
+create policy "Admins can delete comments"
+on public.comments for delete
+to authenticated
+using (public.is_admin());
 grant select on public.scripts to anon, authenticated;
 grant insert, update, delete on public.scripts to authenticated;
 grant select, insert on public.comments to anon, authenticated;
+grant delete on public.comments to authenticated;
 grant usage, select on sequence public.comments_id_seq to anon, authenticated;
 -- Remove comments when their script is deleted, including on databases with the old schema.
 create or replace function public.delete_script_comments() returns trigger language plpgsql security definer set search_path = '' as $$
