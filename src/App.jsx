@@ -293,7 +293,13 @@ function App() {
 
     <section className="hero shell">
       <div className="hero-copy">
-        <div className="overline"><span className="live-dot" /> یک قاب برای هر روایت</div>
+        <div className="association-identity">
+          <div className="association-logo">
+            <span>لوگو</span>
+            <img src={`${import.meta.env.BASE_URL}association-logo.png`} alt="لوگوی انجمن علمی دانشجویی زبان و ادبیات فارسی دانشگاه شهرکرد" onError={event => event.currentTarget.remove()} />
+          </div>
+          <div className="association-name"><small>ارائه‌ای از</small><strong>انجمن علمی دانشجویی زبان و ادبیات فارسی<br />دانشگاه شهرکرد</strong></div>
+        </div>
         <h1>هر داستانی،<br /><em>یک جهان تازه.</em></h1>
         <p>فیلمنامه‌ها را بخوان، وارد جهان نویسنده شو و بعد از تیتراژ، گفت‌وگو را ادامه بده.</p>
         <a className="primary-btn" href="#library">ورود به کتابخانه <ChevronLeft size={17} /></a>
